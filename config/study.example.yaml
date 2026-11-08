@@ -1,0 +1,32 @@
+schema_version: '1'
+study_id: hcm_urban_afternoon
+project_root: ../..
+data_root: ../../data
+qa_root: ../../../hcm-traffic-qa
+project_files_root: ../../../hcm-traffic-project
+osm_pbf: external/vietnam-261104.osm.pbf
+policy_file: ../policy.yaml
+contracts_file: ../source_contracts.yaml
+budget_file: budget.yaml
+bbox: [106.55, 10.65, 106.85, 10.95]
+graph_buffer_m: 3000.0
+metric_crs: EPSG:32648
+timezone: Asia/Ho_Chi_Minh
+schedule_version: afternoon_30m_v1
+slots: ['16:30', '17:00', '17:30', '18:00', '18:30']
+dates: []
+provisional: true
+vehicle_scope: motor_vehicle
+evidence_file: null
+source_evidence_file: null
+registry_artifact: null
+
+selected_paths_file: ../../data/reference/candidates/<candidate_version>/paths.json
+operational_selection_file: ../../data/reference/candidates/<candidate_version>/manifest.json
+capture_plan_file: ../../data/reference/candidates/<candidate_version>/capture_plan_operational_v2.json
+graph_cache: ../../../hcm-traffic-data/cache/graph/<graph_version>
+cache_root: ../../../hcm-traffic-data/cache
+state_root: ../../../hcm-traffic-data/state
+processing_root: ../../../hcm-traffic-data/processing/hcm_urban_afternoon
+archive_root: ../../../hcm_traffic_archive/interim_history
+log_root: ../../logs

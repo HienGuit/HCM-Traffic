@@ -1,0 +1,17 @@
+version: orbis_relative_ci_contract_v2
+traffic_url: https://api.tomtom.com/maps/orbis/traffic/flow/vector/tile/{z}/{x}/{y}
+api_version: '2'
+attributes: tags(road_category,road_subcategory,left_hand_traffic,road_closure,relative_speed,absolute_speed,part_of_two_way_road,openlr,display_class)
+traffic_product: orbis_vector_flow_v2
+weather_url: https://api.open-meteo.com/v1/forecast
+weather_current: precipitation,weather_code
+ci_source_ready: false
+target_method: length_weighted_relative_speed_v1
+source_direction_verified: false
+documentation_urls:
+  - https://docs.tomtom.com/traffic-api/documentation/tomtom-orbis-maps/v2/traffic-flow/vector-flow-tiles
+
+relative_speed_semantics: fraction_of_freeflow
+absolute_speed_unit: km/h
+source_direction_rule: directed_openlr_occurrence_v2
+closure_semantics: presence_true_absent_false

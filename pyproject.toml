@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hcm-traffic-etl"
+version = "0.1.0"
+description = "Independent offline OSM/OpenLR traffic ETL and bounded Orbis capture"
+requires-python = ">=3.11,<3.12"
+dependencies = ["pydantic>=2.10,<3", "PyYAML>=6,<7", "httpx>=0.28,<0.29", "osmium>=4,<5", "shapely>=2,<3", "pyproj>=3.7,<4", "mapbox-vector-tile>=2,<3", "openlr>=1,<2", "openlr-dereferencer>=1,<2", "portalocker>=3,<4", "tzdata>=2025.1"]
+
+[project.scripts]
+traffic-etl = "src.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "ruff>=0.11", "psutil>=6", "hatchling>=1.26"]
+
+[tool.hatch.build]
+dev-mode-dirs = ["."]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"config/policy.yaml" = "src/resources/policy.yaml"
+"config/source_contracts.yaml" = "src/resources/source_contracts.yaml"
+"config/study.example.yaml" = "src/resources/study.example.yaml"
+"config/budget.example.yaml" = "src/resources/budget.example.yaml"
+"NOTICE" = "src/resources/NOTICE"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "main.py", "config/policy.yaml", "config/source_contracts.yaml", "config/study.example.yaml", "config/budget.example.yaml", "scripts/dev.py", "scripts/operate.ps1", "pyproject.toml", "requirements.txt", "README.md", "NOTICE", ".python-version", ".gitignore"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
