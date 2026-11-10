@@ -35,6 +35,7 @@ class CapturePlan(Contract):
     collection_kind: str = "pilot"
     resources: list[ResourceRequest]
     expected_attempts: int
+    hash_contract: str = "resolved_config_v1"
 
 
 class SlotKey(Contract):

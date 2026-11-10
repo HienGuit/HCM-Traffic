@@ -15,9 +15,11 @@ from .capture.budget import BudgetController
 from .capture.transport import Transport
 from .capture.recovery import reconcile
 from .capture.preflight import preflight
+from .capture.contract import plan_matches_config
 from .progress import Progress
 from .processing.publish import publish_run,read_current
 from .provenance import source_fingerprint
+from .storage.relocate import resolve_artifact
 
 _WORKER_GRAPH=None
 
@@ -64,6 +66,8 @@ class ETLQueue:
             self.progress('Processing pending',scheduled_at=record['scheduled_at'],reason='RAW_NOT_FINALIZED');return
         key=digest([self.config.study.study_id,self.paths[0].registry_version,record['scheduled_at'],record.get('snapshot') or 'missed',self.version])
         old=self.state.job(key)
+        if old and old.get('result_path'):
+            old=dict(old,result_path=str(resolve_artifact(old['result_path'],self.config.study.relocation_file)))
         if key in self.enqueued:return
         self.enqueued.add(key)
         if old and old['status']=='published' and old['result_path'] and Path(old['result_path']).is_dir():
@@ -114,13 +118,14 @@ def _paths(config):
 def run_day(config,day,*,allow_online=False,clock=None,state=None,budget=None,transport=None,queue_factory=ETLQueue,progress=None):
     day=date.fromisoformat(str(day))
     if config.study.dates and day not in config.study.dates:return {'ready':False,'reasons':['STUDY_DATE_NOT_CONFIGURED'],'network_calls':0}
+    configured=config
     config=_day_config(config,day);clock=clock or Clock()
     progress=progress or Progress(config.output(f'logs/{day}.log'),clock,config.study.timezone)
     clock.progress=progress
     paths=_paths(config);plan=CapturePlan.model_validate(read_json(config.study.capture_plan_file))
     # Plan binds the configured base setup, independent of a CLI day override.
     base_config=ResolvedConfig(config.study.model_copy(update={'dates':[]}),config.policy,config.sources,config.budget)
-    plan_config=config if plan.config_sha256==config.hash else base_config
+    plan_config=next((c for c in (configured,config,base_config) if plan_matches_config(plan,c)),configured)
     state=state or State(config.output('state/capture.sqlite'))
     with portalocker.Lock(config.output('state/capture.lock'),timeout=0):
         read_current(config)

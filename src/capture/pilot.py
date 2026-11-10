@@ -12,6 +12,7 @@ from ..storage.state import State
 from ..preparation.registry import read_paths
 from ..preparation.plan import build_capture_plan
 from .preflight import preflight
+from .contract import plan_matches_config, LEGACY_HASH
 
 
 def prepare_pilot(candidate_folder, pilot_id, graph, config, allow_online=False):
@@ -92,9 +93,14 @@ def recover_pilot_snapshots(pilot, plan):
     snapshots = []
     for path in pilot.output("raw").glob("*/*/*/manifest.json"):
         manifest = SnapshotManifest.model_validate(read_json(path))
+        from ..domain.capture import CapturePlan
+        raw_plan = read_json(path.parent / "plan.json")
+        stored_plan = CapturePlan.model_validate(raw_plan)
         if (
-            manifest.plan_sha256 != digest(plan.model_dump(mode="json"))
-            or manifest.capture_config_sha256 != pilot.hash
+            manifest.plan_sha256 != digest(raw_plan)
+            or stored_plan.model_dump(mode="json") != plan.model_dump(mode="json")
+            or not plan_matches_config(stored_plan, pilot)
+            or (plan.hash_contract == LEGACY_HASH and manifest.capture_config_sha256 != pilot.hash)
         ):
             raise ValueError("Resume raw does not match pinned plan/config")
         if manifest.collection_kind != "pilot" or manifest.scheduled_at is not None:
@@ -134,7 +140,7 @@ def run_pilot(
         paths = read_paths(Path(report["registry"]))
         plan = CapturePlan.model_validate(read_json(Path(report["plan"])))
         if (
-            plan.config_sha256 != pilot.hash
+            not plan_matches_config(plan, pilot)
             or plan.graph_version != graph.version
             or plan.registry_sha256 != digest([p.model_dump(mode="json") for p in paths])
         ):

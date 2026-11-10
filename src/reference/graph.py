@@ -13,8 +13,10 @@ from ..domain.reference import DirectedEdge
 from ..geo.crs import project
 from ..storage.files import digest, read_json, write_json, sha256
 from ..storage.cache import validate_cache, seal_cache
-from .classification import directions, frc_fow, NON_MOTOR, MAPPER_VERSION
+from .classification import directions, frc_fow, NON_MOTOR
 from .importer import import_extract
+from .dependencies import GRAPH_CONTRACT, graph_dependencies
+from .semantic import semantic_digest, SEMANTIC_METHOD
 
 
 class Graph:
@@ -155,12 +157,25 @@ def load_graph(folder: Path) -> Graph:
     manifest = read_json(folder / "manifest.json")
     if not validate_cache(folder, manifest["dependencies"]):
         raise ValueError("Graph cache hash/schema invalid")
+    modern = manifest["dependencies"].get("contract") == GRAPH_CONTRACT
+    if modern:
+        if meta["version"] != digest(manifest["dependencies"])[:20]:
+            raise ValueError("GRAPH_DEPENDENCY_VERSION_MISMATCH")
+        if meta.get("semantic_method") != SEMANTIC_METHOD or meta.get("semantic_sha256") != semantic_digest(folder):
+            raise ValueError("GRAPH_SEMANTIC_HASH_MISMATCH")
     with closing(sqlite3.connect(folder / "graph.sqlite")) as db:
         edges = [
             DirectedEdge(**json.loads(r[0]))
             for r in db.execute("SELECT payload FROM edges ORDER BY id")
         ]
         nodes = {r[0]: json.loads(r[1]) for r in db.execute("SELECT * FROM nodes")}
+    if modern:
+        if meta["edges"] != len(edges) or meta["nodes"] != len(nodes):
+            raise ValueError("GRAPH_COUNTS_MISMATCH")
+        for edge in edges:
+            expected = f"{meta['version']}:{edge.way_id}:{edge.first_index}:{edge.last_index}:{edge.traversal}"
+            if edge.id != expected:
+                raise ValueError("GRAPH_EDGE_NAMESPACE_MISMATCH")
     graph = Graph(meta["version"], edges, nodes, meta["crs"], meta["restrictions"])
     graph.artifact_root = folder.resolve()
     graph.missing_ways = meta.get("missing_ways", 0)
@@ -168,13 +183,7 @@ def load_graph(folder: Path) -> Graph:
 
 
 def build_reference(pbf_path: Path, config) -> Path:
-    deps = {
-        "extract_sha256": sha256(pbf_path),
-        "crs": config.study.metric_crs,
-        "graph": "directed_junction_v1",
-        "mapper": MAPPER_VERSION,
-        "policy": config.policy.version,
-    }
+    deps = graph_dependencies(config, sha256(pbf_path))
     folder = config.output("cache/graph/" + digest(deps)[:20])
     folder.parent.mkdir(parents=True, exist_ok=True)
     with portalocker.Lock(str(folder) + ".lock", timeout=30):
@@ -194,5 +203,8 @@ def build_reference(pbf_path: Path, config) -> Path:
             folder / "normalized.sqlite", digest(deps)[:20], config.study.metric_crs, region
         )
         save_graph(graph, folder)
+        meta = read_json(folder / "graph.json")
+        meta.update(semantic_method=SEMANTIC_METHOD, semantic_sha256=semantic_digest(folder))
+        write_json(folder / "graph.json", meta)
         seal_cache(folder, deps, ["graph.sqlite", "graph.json", "normalized.sqlite"])
     return folder

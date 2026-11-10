@@ -8,6 +8,7 @@ from .storage.files import digest
 def source_fingerprint(root: Path):
     files = {}
     candidates=[p for folder in ('src','scripts') for p in (root/folder).rglob('*.py')]
+    candidates += list((root/'scripts').rglob('*.ps1'))
     candidates += [root/n for n in ('main.py','pyproject.toml','requirements.txt','README.md','NOTICE')]
     candidates += [p for p in (root/'config').glob('*') if p.is_file() and p.suffix in ('.yaml','.json')]
     for path in sorted(candidates):

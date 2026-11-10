@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime,timezone
 from zoneinfo import ZoneInfo
 from ..storage.state import State
+from .contract import plan_matches_config, CAPTURE_HASH
 
 
 def preflight(plan, config, allow_online=False, *, state=None, day=None, clock=None, snapshot_count=None):
@@ -32,8 +33,27 @@ def preflight(plan, config, allow_online=False, *, state=None, day=None, clock=N
         reasons.append("KEY_MISSING")
     if not plan.resources:
         reasons.append("EMPTY_CAPTURE_PLAN")
-    if plan.config_sha256 != config.hash:
+    if not plan_matches_config(plan, config):
         reasons.append("CONFIG_HASH_MISMATCH")
+    if plan.hash_contract == CAPTURE_HASH:
+        from ..storage.files import read_json, digest
+        from ..storage.cache import validate_cache
+        graph = config.study.graph_cache
+        if graph is not None:
+            try:
+                meta = read_json(graph / "graph.json")
+                manifest = read_json(graph / "manifest.json")
+                if meta['version'] != plan.graph_version or not validate_cache(graph, manifest['dependencies']):
+                    reasons.append("PLAN_GRAPH_MISMATCH")
+            except (OSError, ValueError, KeyError, TypeError):
+                reasons.append("GRAPH_CACHE_INVALID")
+        selected = config.study.selected_paths_file
+        if plan.collection_kind == 'scheduled' and selected is not None:
+            try:
+                if digest(read_json(selected)) != plan.registry_sha256:
+                    reasons.append("PLAN_REGISTRY_MISMATCH")
+            except (OSError, ValueError, KeyError, TypeError):
+                reasons.append("PLAN_REGISTRY_MISMATCH")
     for resource in plan.resources:
         expected = (
             config.sources.traffic_url.format(

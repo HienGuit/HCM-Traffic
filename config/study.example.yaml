@@ -2,8 +2,8 @@ schema_version: '1'
 study_id: hcm_urban_afternoon
 project_root: ../..
 data_root: ../../data
-qa_root: ../../../hcm-traffic-qa
-project_files_root: ../../../hcm-traffic-project
+qa_root: ../../.local/qa
+project_files_root: ../../.local/project
 osm_pbf: external/vietnam-261104.osm.pbf
 policy_file: ../policy.yaml
 contracts_file: ../source_contracts.yaml
@@ -25,8 +25,9 @@ selected_paths_file: ../../data/reference/candidates/<candidate_version>/paths.j
 operational_selection_file: ../../data/reference/candidates/<candidate_version>/manifest.json
 capture_plan_file: ../../data/reference/candidates/<candidate_version>/capture_plan_local.json
 graph_cache: ../../data/reference/graph/<graph_version>
-cache_root: ../../../hcm-traffic-data/cache
-state_root: ../../../hcm-traffic-data/state
-processing_root: ../../../hcm-traffic-data/processing/hcm_urban_afternoon
-archive_root: ../../../hcm_traffic_archive/interim_history
+cache_root: ../../.local/cache
+state_root: ../../.local/state
+processing_root: ../../data/processed
+archive_root: ../../.local/archive/interim_history
+pilot_output_root: ../../.local/pilots
 log_root: ../../logs

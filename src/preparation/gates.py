@@ -144,7 +144,10 @@ def source_contract_readiness(config) -> dict:
             ):
                 reasons.append("SOURCE_CONTRACT_SCOPE")
             for document in record.get("documentation", []):
-                if sha256(Path(document["artifact_path"])) != document["sha256"]:
+                document_path = Path(document["artifact_path"])
+                if not document_path.is_absolute():
+                    document_path = path.parent / document_path
+                if sha256(document_path) != document["sha256"]:
                     reasons.append("SOURCE_DOCUMENT_HASH_MISMATCH")
         except (OSError, ValueError, KeyError, TypeError):
             reasons.append("SOURCE_CONTRACT_ARTIFACT_INVALID")

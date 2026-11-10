@@ -8,6 +8,7 @@ from ..storage.files import digest
 from ..domain.reference import RegistryPath
 from ..reference.graph import Graph
 from ..config import ResolvedConfig
+from ..capture.contract import CAPTURE_HASH, capture_hash
 
 
 def build_capture_plan(
@@ -62,14 +63,16 @@ def build_capture_plan(
         if path.segment_id not in resources[key].segments:
             resources[key].segments.append(path.segment_id)
         resources[key].segment_directions.append((path.segment_id, path.direction_id))
-    return CapturePlan(
+    plan = CapturePlan(
         registry_version=paths[0].registry_version if paths else "draft_v1",
         registry_sha256=digest([p.model_dump(mode="json") for p in paths]),
         graph_version=graph.version,
-        config_sha256=config.hash,
+        config_sha256="pending",
+        hash_contract=CAPTURE_HASH,
         resources=sorted(resources.values(), key=lambda r: r.resource_id),
         expected_attempts=len(resources) * config.budget.max_attempts,
         collection_kind="scheduled"
         if config.study.operational_selection_file is not None or not config.study.provisional
         else "pilot",
     )
+    return plan.model_copy(update={"config_sha256": capture_hash(plan, config)})

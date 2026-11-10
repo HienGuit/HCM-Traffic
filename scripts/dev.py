@@ -1,4 +1,4 @@
-"""Single standard-library launcher; development artifacts stay outside checkout."""
+"""Standard-library launcher; local development artifacts stay in .local/dev."""
 
 import argparse
 import hashlib
@@ -14,18 +14,23 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def dev_root(data):
+    return ROOT/'.local/dev' if data.resolve()==ROOT/'data' else data.resolve()/'dev'
+
+
 def environment(data):
     data = data.resolve()
-    if data.is_relative_to(ROOT) or ROOT.is_relative_to(data):
-        raise ValueError("External data root must be disjoint from repo")
+    if (data.is_relative_to(ROOT) and data != ROOT/'data') or ROOT.is_relative_to(data):
+        raise ValueError("Use repo/data or a disjoint external data root")
     env = os.environ.copy()
     for name, rel in {
-        "RUFF_CACHE_DIR": "dev/cache/ruff",
-        "TMP": "dev/tmp",
-        "TEMP": "dev/tmp",
-        "TMPDIR": "dev/tmp",
+        "RUFF_CACHE_DIR": "cache/ruff",
+        "PIP_CACHE_DIR": "cache/pip",
+        "TMP": "tmp",
+        "TEMP": "tmp",
+        "TMPDIR": "tmp",
     }.items():
-        p = data / rel
+        p = dev_root(data) / rel
         p.mkdir(parents=True, exist_ok=True)
         env[name] = str(p)
     env.update(PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
@@ -34,12 +39,17 @@ def environment(data):
 
 
 def inventory():
+    selected=[]
+    for folder, dirs, names in os.walk(ROOT):
+        here=Path(folder)
+        dirs[:]=[d for d in dirs if d not in ('.git','.venv','.local','__pycache__') and here/d not in (ROOT/'data',ROOT/'logs',ROOT/'config/local')]
+        selected.extend(here/name for name in names)
     return {
         str(p.relative_to(ROOT)): {
             "bytes": p.stat().st_size,
             "sha256": hashlib.sha256(p.read_bytes()).hexdigest() if p.suffix != ".pbf" else None,
         }
-        for p in ROOT.rglob("*")
+        for p in selected
         if p.is_file() and ".git" not in p.parts and not p.is_relative_to(ROOT / "data")
         and not p.is_relative_to(ROOT/'logs') and not p.is_relative_to(ROOT/'config/local')
     }
@@ -50,7 +60,7 @@ def main():
     parser.add_argument(
         "command", choices=["bootstrap", "run", "check", "verify", "package", "clean"]
     )
-    parser.add_argument("--data-root", required=True, type=Path)
+    parser.add_argument("--data-root", default=ROOT/'data', type=Path)
     parser.add_argument("--qa-root", type=Path)
     parser.add_argument("--scope", default="offline")
     parser.add_argument("--heavy", action="store_true")
@@ -63,9 +73,10 @@ def main():
         rest = rest[1:]
     data = args.data_root.resolve()
     env = environment(data)
-    python = data / "dev/env/Scripts/python.exe" if os.name == "nt" else data / "dev/env/bin/python"
+    venv = ROOT/'.venv' if data == ROOT/'data' else data/'dev/env'
+    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     run_id = args.run_id or time.strftime("%Y%m%dT%H%M%S") + "_" + uuid.uuid4().hex[:8]
-    run = data / "dev/runs" / run_id
+    run = dev_root(data) / "runs" / run_id
     run.mkdir(parents=True, exist_ok=False)
     before = inventory()
     started = time.monotonic()
@@ -98,7 +109,7 @@ def main():
         if not args.qa_root:
             raise ValueError("verify requires --qa-root")
         qa = args.qa_root.resolve()
-        if qa.is_relative_to(ROOT) or not (qa / "runner.py").is_file():
+        if (qa.is_relative_to(ROOT) and qa != ROOT/'.local/qa') or not (qa / "runner.py").is_file():
             raise ValueError("QA bundle absent/invalid: NOT_RUN")
         command = [
             str(python),
@@ -130,7 +141,7 @@ def main():
         subprocess.run([str(python), "-B", "-c", code], cwd=cwd, env=env, check=True)
         command = []
     elif args.command == "package":
-        stage = data / "dev/packages" / run_id / "source"
+        stage = dev_root(data) / "packages" / run_id / "source"
         stage.mkdir(parents=True)
         allowed = [
             "src",

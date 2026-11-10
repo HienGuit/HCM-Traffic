@@ -10,6 +10,7 @@ from ..domain.capture import SnapshotManifest, RequestAttempt
 from ..storage.files import digest, write_json, sha256
 from ..provenance import source_fingerprint
 from .raw import store_attempt, finalize_snapshot
+from .contract import plan_document
 
 RETRYABLE_STATUS = {408,429,500,502,503,504}
 RETRYABLE_ERRORS = {'ConnectError','ConnectTimeout','ReadError','ReadTimeout',
@@ -57,7 +58,7 @@ def capture_snapshot(
         scheduled_at=scheduled_at,
         started_at=started,
         status="collecting",
-        plan_sha256=digest(plan.model_dump(mode="json")),
+        plan_sha256=digest(plan_document(plan)),
         capture_config_sha256=config.hash,
         source_fingerprint=source_fingerprint(config.study.project_root),
         dependency_lock_sha256=sha256(config.study.project_root / "requirements.txt"),

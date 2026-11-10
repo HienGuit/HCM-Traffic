@@ -168,12 +168,22 @@ class Study(Contract):
         if not all(p.is_absolute() for p in roots):
             raise ValueError("All roots must be absolute")
         distinct_roots([self.data_root, self.qa_root, self.project_files_root])
-        distinct_roots([self.project_root, self.qa_root, self.project_files_root])
-        if (
-            self.data_root.resolve().is_relative_to(self.project_root.resolve())
-            and self.data_root.resolve() != self.project_root.resolve() / "data"
+        repo = self.project_root.resolve()
+        for name, relative in (('data_root','data'),('qa_root','.local/qa'),('project_files_root','.local/project')):
+            root = getattr(self,name).resolve()
+            if root.is_relative_to(repo) and root != repo/relative:
+                raise ValueError(f"Only repo/{relative} is permitted for local {name}")
+        for name, relative in (
+            ('cache_root','.local/cache'),('state_root','.local/state'),
+            ('processing_root','data/processed'),('archive_root','.local/archive'),
+            ('pilot_output_root','.local/pilots'),('pilot_run_root','.local/pilots'),
+            ('candidate_checks_root','.local/project/candidate_checks'),('log_root','logs'),
         ):
-            raise ValueError("Only the explicit repo/data runtime subtree may be nested")
+            value=getattr(self,name)
+            # Read legacy configurations while new defaults use .local/ operational roots.
+            legacy = relative.replace('.local/','data/') if relative in ('.local/cache','.local/state','.local/archive','.local/pilots') else relative
+            if value is not None and value.resolve().is_relative_to(repo) and not any(value.resolve().is_relative_to(repo/p) for p in (relative,legacy)):
+                raise ValueError(f"Local {name} must stay within repo/{relative}")
         w, s, e, n = self.bbox
         if not (-180 <= w < e <= 180 and -85 < s < n < 85):
             raise ValueError("Invalid lon/lat bbox")
@@ -197,6 +207,12 @@ class ResolvedConfig:
             k: getattr(self, k).model_dump(mode="json")
             for k in ("study", "policy", "sources", "budget")
         }
+
+    def _protected(self, root):
+        repo=self.study.project_root.resolve()
+        if any(root.resolve().is_relative_to(repo/p) for p in ('data','logs','.local/project','.local/qa','.local/cache','.local/state','.local/archive','.local/pilots','.local/dev')):
+            return tuple([self.study.osm_pbf]+[repo/p for p in ('.git','src','scripts','config','main.py','README.md','pyproject.toml','requirements.txt')])
+        return (repo,self.study.osm_pbf)
 
     def output(self, relative: str) -> Path:
         """All runtime destinations pass through resolved write boundary."""
@@ -223,10 +239,11 @@ class ResolvedConfig:
         ):
             raise ValueError("Unknown or escaping artifact category")
         root = self.study.data_root
+        local = self.study.project_root / '.local' if root.resolve() == self.study.project_root.resolve()/'data' else root
         if parts[0] == "processed":
             root = self.study.processing_root or self.study.project_files_root / "processing" / self.study.study_id
             return safe_output(root.joinpath(*parts[1:]), root,
-                (self.study.project_root,self.study.osm_pbf))
+                self._protected(root))
         if parts[0] == "logs":
             root = self.study.log_root or self.study.project_root / "logs"
             return safe_output(root.joinpath(*parts[1:]),root,
@@ -235,25 +252,32 @@ class ResolvedConfig:
             raise ValueError("Runtime settings belong to config/local, not data/settings")
         if parts[0] == "plans":
             relative = str(Path("reference/plans").joinpath(*parts[1:]))
+        if parts[0] in ('registry','static'):
+            relative = str(Path('reference').joinpath(*parts))
         if parts[:2] == ("cache", "graph"):
             # Graphs are versioned reference inputs; other caches remain disposable.
             relative = str(Path("reference/graph").joinpath(*parts[2:]))
             parts = Path(relative).parts
-        if parts[0] == "cache" and self.study.cache_root is not None:
+        if parts[0] == "cache":
+            cache_root=self.study.cache_root or local/'cache'
             return safe_output(
-                self.study.cache_root.joinpath(*parts[1:]),
-                self.study.cache_root,
-                (self.study.project_root, self.study.osm_pbf),
+                cache_root.joinpath(*parts[1:]),
+                cache_root,
+                self._protected(cache_root),
             )
-        if parts[0] == "state" and self.study.state_root is not None:
+        if parts[0] == "state":
+            state_root=self.study.state_root or local/'state'
             return safe_output(
-                self.study.state_root.joinpath(*parts[1:]),
-                self.study.state_root,
-                (self.study.project_root, self.study.osm_pbf),
+                state_root.joinpath(*parts[1:]),
+                state_root,
+                self._protected(state_root),
             )
+        if parts[0] == 'dev':
+            dev_root=local/'dev'
+            return safe_output(dev_root.joinpath(*parts[1:]),dev_root,self._protected(dev_root))
         if self.study.pilot_run_root is not None and parts[0] not in ("cache", "reference"):
             root = self.study.pilot_run_root
-        protected = (self.study.project_root, self.study.osm_pbf)
+        protected = self._protected(root)
         if root.resolve() == self.study.project_root.resolve() / "data":
             protected = (
                 self.study.osm_pbf,

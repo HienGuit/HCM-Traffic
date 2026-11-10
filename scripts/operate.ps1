@@ -13,6 +13,11 @@ $python=$r.python
 $repoRoot=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $env:PYTHONDONTWRITEBYTECODE='1'
 $env:PYTHONIOENCODING='utf-8'
+$scratch=Join-Path $repoRoot '.local\tmp'
+New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+$env:TMP=$scratch
+$env:TEMP=$scratch
+$env:TMPDIR=$scratch
 if(-not $Date){$Date=& $python -c "from datetime import datetime; from zoneinfo import ZoneInfo; print(datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).date())"}
 if($Action -eq 'collect'){
     if(-not $env:TOMTOM_API_KEY){

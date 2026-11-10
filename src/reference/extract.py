@@ -7,6 +7,7 @@ from ..geo.crs import project
 from ..storage.files import digest, write_json, sha256
 from ..storage.cache import validate_cache, seal_cache
 from .inspect import inspect_reference
+from .dependencies import extract_dependencies
 
 
 def extract_reference(config) -> Path:
@@ -14,12 +15,7 @@ def extract_reference(config) -> Path:
     source = inspect_reference(study.osm_pbf)
     region = project(box(*study.bbox), study.metric_crs)
     buffered = project(region.buffer(study.graph_buffer_m), "EPSG:4326", study.metric_crs)
-    deps = {
-        "source": source.source_sha256,
-        "bbox": list(study.bbox),
-        "buffer_m": study.graph_buffer_m,
-        "extractor": "complete_ways_restrictions_v1",
-    }
+    deps = extract_dependencies(config, source.source_sha256)
     folder = config.output("reference/" + digest(deps)[:20])
     if validate_cache(folder, deps):
         return folder / "region.osm.pbf"

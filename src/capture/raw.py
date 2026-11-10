@@ -1,6 +1,7 @@
 """Immutable per-attempt bodies, stored-byte hashes and finalized snapshots."""
 
 from ..storage.files import atomic_bytes, write_json
+from .contract import plan_document
 
 
 def store_attempt(folder, resource, reservation, body, headers):
@@ -21,5 +22,5 @@ def store_attempt(folder, resource, reservation, body, headers):
 
 
 def finalize_snapshot(folder, manifest, plan):
-    write_json(folder / "plan.json", plan.model_dump(mode="json"), immutable=True)
+    write_json(folder / "plan.json", plan_document(plan), immutable=True)
     write_json(folder / "manifest.json", manifest.model_dump(mode="json"), immutable=True)

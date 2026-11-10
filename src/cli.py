@@ -25,6 +25,11 @@ def parser():
     r.add_parser("inspect")
     r.add_parser("extract")
     r.add_parser("setup")
+    for name in ('compatibility-export', 'rebind-paths'):
+        action = r.add_parser(name)
+        action.add_argument('--graph', required=True, type=Path)
+        action.add_argument('--candidates', required=True, type=Path)
+        action.add_argument('--output' if name == 'compatibility-export' else '--compatibility', required=True, type=Path)
     build = r.add_parser("build")
     build.add_argument("--extract", required=True, type=Path)
     cand = subs.add_parser("candidates")
@@ -122,6 +127,11 @@ def execute(args, config):
             "source_contract_gate": source_gate,
         }
     if args.command == "reference":
+        if args.action in ('compatibility-export', 'rebind-paths'):
+            from .reference.compatibility import compatibility_export, rebind_paths
+            if args.action == 'compatibility-export':
+                return compatibility_export(args.graph,args.candidates,args.output,config)
+            return rebind_paths(args.graph,args.candidates,args.compatibility,config)
         if args.action == "setup":
             from .reference.setup import setup_reference
 

@@ -24,3 +24,4 @@ dist/
 *.egg-info/
 *.rar
 /AGENTS.md
+/.local/
