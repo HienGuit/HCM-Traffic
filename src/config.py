@@ -235,6 +235,10 @@ class ResolvedConfig:
             raise ValueError("Runtime settings belong to config/local, not data/settings")
         if parts[0] == "plans":
             relative = str(Path("reference/plans").joinpath(*parts[1:]))
+        if parts[:2] == ("cache", "graph"):
+            # Graphs are versioned reference inputs; other caches remain disposable.
+            relative = str(Path("reference/graph").joinpath(*parts[2:]))
+            parts = Path(relative).parts
         if parts[0] == "cache" and self.study.cache_root is not None:
             return safe_output(
                 self.study.cache_root.joinpath(*parts[1:]),

@@ -17,6 +17,11 @@ def build_capture_plan(
     resources = {}
     weather_points = {}
     for path in paths:
+        if path.graph_version != graph.version:
+            raise ValueError(
+                f"PATH_GRAPH_VERSION_MISMATCH: {path.segment_id}/{path.direction_id}; "
+                f"paths={path.graph_version}, graph={graph.version}"
+            )
         metric = path_geometry(graph, path.edges)
         corridor = project(metric.buffer(config.policy.tile_buffer_m), "EPSG:4326", graph.crs)
         for z, x, y in cover(corridor, config.policy.tile_zoom):

@@ -3,6 +3,7 @@
 import json
 import sqlite3
 from collections import defaultdict
+from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 import portalocker
@@ -42,7 +43,7 @@ class Graph:
 
 
 def graph_from_normalized(database: Path, version: str, crs: str, buffered_region=None) -> Graph:
-    with sqlite3.connect(database) as db:
+    with closing(sqlite3.connect(database)) as db:
         nodes = {r[0]: (r[1], r[2], json.loads(r[3])) for r in db.execute("SELECT * FROM nodes")}
         ways = [
             (r[0], json.loads(r[1]), json.loads(r[2])) for r in db.execute("SELECT * FROM ways")
@@ -154,7 +155,7 @@ def load_graph(folder: Path) -> Graph:
     manifest = read_json(folder / "manifest.json")
     if not validate_cache(folder, manifest["dependencies"]):
         raise ValueError("Graph cache hash/schema invalid")
-    with sqlite3.connect(folder / "graph.sqlite") as db:
+    with closing(sqlite3.connect(folder / "graph.sqlite")) as db:
         edges = [
             DirectedEdge(**json.loads(r[0]))
             for r in db.execute("SELECT payload FROM edges ORDER BY id")

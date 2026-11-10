@@ -24,6 +24,7 @@ def parser():
     r = ref.add_subparsers(dest="action", required=True)
     r.add_parser("inspect")
     r.add_parser("extract")
+    r.add_parser("setup")
     build = r.add_parser("build")
     build.add_argument("--extract", required=True, type=Path)
     cand = subs.add_parser("candidates")
@@ -121,6 +122,10 @@ def execute(args, config):
             "source_contract_gate": source_gate,
         }
     if args.command == "reference":
+        if args.action == "setup":
+            from .reference.setup import setup_reference
+
+            return setup_reference(config)
         if args.action == "inspect":
             from .reference.inspect import inspect_reference
 

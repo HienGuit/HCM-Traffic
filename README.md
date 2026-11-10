@@ -18,49 +18,89 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
 
 ## Setup
 
-Use Python 3.11 and a dedicated virtual environment:
+1. Open PowerShell in the repository root and create a Python 3.11 environment:
 
-```powershell
-py -3.11 -m venv ..\hcm_traffic_env
-& ..\hcm_traffic_env\Scripts\python.exe -m pip install -r requirements.txt
-& ..\hcm_traffic_env\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
-New-Item -ItemType Directory -Force config/local
-Copy-Item config/study.example.yaml config/local/study.yaml
-Copy-Item config/budget.example.yaml config/local/budget.yaml
-```
+   ```powershell
+   py -3.11 -m venv ..\hcm_traffic_env
+   ```
 
-Edit the local study configuration with the input paths, selected registry, capture plan and schedule. Relative configuration paths resolve from the YAML file; relative PBF paths resolve from `data_root`.
+2. Install dependencies and the package:
 
-Set the TomTom key in the current PowerShell process:
+   ```powershell
+   & ..\hcm_traffic_env\Scripts\python.exe -m pip install -r requirements.txt
+   & ..\hcm_traffic_env\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
+   ```
 
-```powershell
-$secret = Read-Host "TomTom API key" -AsSecureString
-$env:TOMTOM_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password
-```
+3. Create local configuration files (first setup only):
 
-The default application budget is **200 traffic attempts and 200 weather attempts per day**, accounted in `Asia/Ho_Chi_Minh`. Each resource permits three total attempts, with bounded retries. Provider quotas, rate limits and account restrictions still apply.
+   ```powershell
+   New-Item -ItemType Directory -Force config/local
+   Copy-Item config/study.example.yaml config/local/study.yaml
+   Copy-Item config/budget.example.yaml config/local/budget.yaml
+   Copy-Item config/runtime.example.json config/local/runtime.json
+   ```
+
+4. Add the local inputs:
+
+   - PBF: `data/external/<filename>.osm.pbf`.
+   - Candidates: `candidates.geojson`, `paths.json`, `candidate_assessment.csv`, `shortlist.json`, `static.json`, `manifest.json` under `data/reference/candidates/<candidate_version>/`.
+   - Source evidence and referenced artifacts, only if configured.
+
+5. Edit `study.yaml`, `budget.yaml` and `runtime.json` in `config/local/`:
+
+   - Set input/output paths, candidate version, schedule and budget.
+   - Set `osm_pbf` relative to `data_root`, for example `external/<filename>.osm.pbf`.
+   - Set other relative paths from the declaring config file's directory.
+   - Set runtime `python` to the environment from step 1, `config` to `study.yaml`, and `plan` to the configured capture plan.
+   - Set `capture_plan_file` to `../../data/reference/candidates/<candidate_version>/capture_plan_local.json`.
+
+6. Build the graph from the configured PBF offline; valid cached artifacts are reused:
+
+   ```powershell
+   $python = "..\hcm_traffic_env\Scripts\python.exe"
+   $result = & $python -B main.py --config config/local/study.yaml reference setup
+   if ($LASTEXITCODE -ne 0) { throw "Reference setup failed" }
+   $reference = $result | ConvertFrom-Json
+   $graph = $reference.graph
+   $reference
+   ```
+
+   Set `graph_cache` in `study.yaml` to `../../data/reference/graph/<graph_version>` using the returned `graph_version`. Use candidate paths matching this graph version; if they differ, stop and prepare compatible candidates. Setup does not rewrite candidates or config.
+
+7. Generate the local capture plan offline after finishing configuration:
+
+   ```powershell
+   $version = "<candidate_version>"
+   $result = & $python -B main.py --config config/local/study.yaml plan --graph $graph --paths "data/reference/candidates/$version/paths.json"
+   if ($LASTEXITCODE -ne 0) { throw "Plan generation failed" }
+   $plan = $result | ConvertFrom-Json
+   Copy-Item -LiteralPath $plan.plan -Destination "data/reference/candidates/$version/capture_plan_local.json"
+   ```
+
+   Repeat this step after changing the study or budget configuration.
+
+8. Run offline checks; set the key in this PowerShell process to avoid `KEY_MISSING` in dry-run:
+
+   ```powershell
+   & ..\hcm_traffic_env\Scripts\python.exe -B main.py --config config/local/study.yaml doctor
+   $secret = Read-Host "TomTom API key" -AsSecureString
+   $env:TOMTOM_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password
+   .\scripts\operate.ps1 -Action dry-run -Date YYYY-MM-DD
+   ```
 
 ## Usage
 
-Replace `YYYY-MM-DD` with the study date. One command runs scheduled collection, offline processing and interim publication:
+`collect`: collect the specified day's scheduled slots, automatically transform and update CSVs; enter the key when prompted and keep the window open until completion.
 
 ```powershell
-& ..\hcm_traffic_env\Scripts\python.exe main.py run --date YYYY-MM-DD --allow-online
+.\scripts\operate.ps1 -Action collect -Date YYYY-MM-DD
 ```
 
-Use another configuration when needed:
+`transform`: reprocess existing raw data for recovery without calling APIs.
 
 ```powershell
-& ..\hcm_traffic_env\Scripts\python.exe main.py run --date YYYY-MM-DD --config config/local/study.yaml --allow-online
+.\scripts\operate.ps1 -Action transform -Date YYYY-MM-DD
 ```
-
-Recover processing from finalized raw snapshots without HTTP requests:
-
-```powershell
-& ..\hcm_traffic_env\Scripts\python.exe main.py transform --date YYYY-MM-DD
-```
-
-Daily usage is derived from the persistent attempt ledger. Restarting does not reset usage or repeat completed capture slots. Run `main.py --help` for the CLI, or use `scripts/operate.ps1` as a PowerShell helper.
 
 ## Project Structure and Outputs
 
@@ -69,8 +109,9 @@ Daily usage is derived from the persistent attempt ledger. Restarting does not r
 - `config/`: shared policies and configuration examples; `config/local/` holds local settings.
 - `scripts/`: development and operational helpers.
 - `data/external/` and `data/reference/`: configured source inputs and versioned reference artifacts.
+- `data/reference/graph/<graph_version>/`: graph generated during setup; excluded from Git with all of `data/`.
 - `data/raw/`: original responses and capture metadata.
-- `data/interim/observations.csv`: the main 15-column analysis table, including `day_of_week`.
+- `data/interim/observations.csv`: the main 15-column analysis table.
 - `data/interim/observations_full.csv`: the full table with matching observation keys.
 - `data/interim/audit/` and `manifest.json`: diagnostics and provenance.
 - `logs/`: operational progress and error logs.
