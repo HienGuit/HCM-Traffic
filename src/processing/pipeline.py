@@ -95,7 +95,7 @@ def _process(inventory_path, paths, graph, config, force, run_artifact, update_p
             "scheduled_scope": sorted(scheduled_scope) if scheduled_scope is not None else None,
         }
     )
-    pointer = config.output("processed/diagnostic_current.json")
+    pointer = config.output("interim/diagnostic_current.json")
     if not force and pointer.is_file():
         previous = read_json(pointer)
         if previous["fingerprint"] == fingerprint:
@@ -107,7 +107,7 @@ def _process(inventory_path, paths, graph, config, force, run_artifact, update_p
             if check["valid"]:
                 return {"run": str(previous_path), "cache_hit": True, "validation": check}
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + uuid.uuid4().hex[:8]
-    folder = config.output("processed/" + run_id)
+    folder = config.output("interim/" + run_id)
     folder.mkdir(parents=True, exist_ok=False)
     run_artifact.append(folder)
     audit = {

@@ -110,7 +110,7 @@ def preflight(plan, config, allow_online=False, *, state=None, day=None, clock=N
     if worst > config.budget.deadline_s:
         reasons.append("DEADLINE_INFEASIBLE")
     config.output("raw/guard")
-    for category in ('raw','interim'):
+    for category in ('raw','interim','processed'):
         root=config.output(category);root.mkdir(parents=True,exist_ok=True)
         probe=root/('.preflight_probe_'+uuid.uuid4().hex)
         try:probe.write_bytes(b'ok')

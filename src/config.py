@@ -241,9 +241,10 @@ class ResolvedConfig:
         root = self.study.data_root
         local = self.study.project_root / '.local' if root.resolve() == self.study.project_root.resolve()/'data' else root
         if parts[0] == "processed":
-            root = self.study.processing_root or self.study.project_files_root / "processing" / self.study.study_id
-            return safe_output(root.joinpath(*parts[1:]), root,
-                self._protected(root))
+            root = (self.study.pilot_run_root / "processed") if self.study.pilot_run_root is not None else (self.study.processing_root or self.study.data_root / "processed")
+            target = root.joinpath(*parts[1:])
+            checked = safe_output(target if len(parts) > 1 else root / ".output_guard", root, self._protected(root))
+            return checked if len(parts) > 1 else checked.parent
         if parts[0] == "logs":
             root = self.study.log_root or self.study.project_root / "logs"
             return safe_output(root.joinpath(*parts[1:]),root,

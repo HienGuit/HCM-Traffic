@@ -141,12 +141,12 @@ def export_run(folder, rows, audit, metadata, validation, config, *, update_poin
     if validation["valid"] and update_pointer:
         # A diagnostic run may pass invariants while all scientific gates remain closed.
         write_json(
-            config.output("processed/diagnostic_current.json"),
+            config.output("interim/diagnostic_current.json"),
             {"path": str(folder), "fingerprint": metadata["fingerprint"]},
         )
         if scientific:
             write_json(
-                config.output("processed/scientific_current.json"),
+                config.output("interim/scientific_current.json"),
                 {
                     "path": str(folder),
                     "fingerprint": metadata["fingerprint"],

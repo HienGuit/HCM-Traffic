@@ -249,7 +249,7 @@ def execute(args, config):
     if args.command == "diagnose":
         from .processing.diagnose import diagnose_run
 
-        destination = config.output("processed/diagnosis_" + uuid.uuid4().hex[:12])
+        destination = config.output("interim/diagnosis_" + uuid.uuid4().hex[:12])
         return diagnose_run(
             args.run, paths, graph, config, destination, args.inventory, args.projection_cases
         )

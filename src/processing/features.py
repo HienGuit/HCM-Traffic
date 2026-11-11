@@ -105,8 +105,8 @@ def enrich_rows(rows, pilots, metadata, audit, config):
 def export_feature_tables(rows, audit, metadata, config):
     full, sidecars = enrich_rows(rows, audit["pilot_observations"], metadata, audit, config)
     run = metadata["run_id"]
-    full_path = config.output("processed/" + run + "/tables/observations_full.csv")
-    interim_path = config.output("processed/" + run + "/tables/observations.csv")
+    full_path = config.output("interim/" + run + "/tables/observations_full.csv")
+    interim_path = config.output("interim/" + run + "/tables/observations.csv")
     fields = sorted({key for row in full for key in row})
     write_csv(full_path, full, fields)
     write_csv(

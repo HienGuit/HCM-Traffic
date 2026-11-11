@@ -1,4 +1,4 @@
-"""One current interim, writer lock and rollback marker for multi-file replace."""
+"""Final tables in processed; staging and audits in interim."""
 import csv
 import json
 import os
@@ -7,7 +7,7 @@ import shutil
 import uuid
 from datetime import datetime,timezone
 import portalocker
-from ..storage.files import read_json,write_json,write_csv,write_jsonl,sha256,digest
+from ..storage.files import read_json,write_json,write_csv,write_jsonl,sha256,digest,atomic_bytes
 from ..storage.paths import safe_output
 from .features import INTERIM_FIELDS
 from ..storage.relocate import resolve_artifact
@@ -22,19 +22,42 @@ def natural_key(row):
     return (row['study_id'],row['registry_version'],row['segment_id'],row['direction_id'],instant)
 
 def _paths(config):
-    root=config.output('interim');root.mkdir(parents=True,exist_ok=True)
-    work=config.output('processed/publish');work.mkdir(parents=True,exist_ok=True)
+    root=config.output('processed');root.mkdir(parents=True,exist_ok=True)
+    work=config.output('interim/publish');work.mkdir(parents=True,exist_ok=True)
     return root,work
 
-def _recover(root,work):
+def _target(root,work,name):
+    base=work.parent/'publication' if Path(name).parts[0]=='audit' else root
+    return safe_output(base/name,base,())
+
+
+def _import_legacy(config,root,work):
+    """Copy verified legacy final tables once; preserve historical originals."""
+    if (root/'manifest.json').exists():return
+    legacy=config.output('interim')
+    if not (legacy/'manifest.json').exists():return
+    with portalocker.Lock(legacy/'.publish.lock',timeout=30):
+        _recover(legacy,config.output('processed/publish'),legacy=True)
+        _check_generation(legacy)
+        m=read_json(legacy/'manifest.json')
+        for name in ('observations.csv','observations_full.csv'):
+            atomic_bytes(root/name,(legacy/name).read_bytes())
+        if (legacy/'audit').exists():
+            shutil.copytree(legacy/'audit',work.parent/'publication/audit',dirs_exist_ok=True)
+        m.update(schema_version='processed_current_v1',audit_root=str(work.parent/'publication'),
+                 migrated_from=str(legacy/'manifest.json'))
+        write_json(root/'manifest.json',m)
+
+
+def _recover(root,work,*,legacy=False):
     marker=root/'.publish_recovery.json'
     if not marker.exists():return
     record=read_json(marker);txn=Path(record['transaction']).resolve()
     if txn.parent!=work.resolve() or not txn.name.startswith('txn_'):
         raise ValueError('Unsafe publish recovery transaction')
     for entry in reversed(record['entries']):
-        target=(root/entry['name']).resolve();backup=txn/'backup'/entry['name'];staged=txn/'new'/entry['name']
-        safe_output(target,root,())
+        target=safe_output(root/entry['name'],root,()) if legacy else _target(root,work,entry['name'])
+        backup=txn/'backup'/entry['name'];staged=txn/'new'/entry['name']
         if backup.exists():
             if target.exists():
                 displaced=txn/'discard'/entry['name'];displaced.parent.mkdir(parents=True,exist_ok=True);os.replace(target,displaced)
@@ -55,7 +78,9 @@ def read_current(config):
     """Recover/verify on open, including a restart that has no new snapshot."""
     root,work=_paths(config)
     with portalocker.Lock(root/'.publish.lock',timeout=30):
-        _recover(root,work);_check_generation(root)
+        _recover(root,work)
+        _import_legacy(config,root,work)
+        _check_generation(root)
         return _csv(root/'observations_full.csv')
 
 def publish_rows(config,full,interim,sidecars,*,day,registry,source,audit_files=None,replace_partition=False,replace_file=None):
@@ -67,7 +92,9 @@ def publish_rows(config,full,interim,sidecars,*,day,registry,source,audit_files=
     replace_file=replace_file or os.replace
     root,work=_paths(config)
     with portalocker.Lock(root/'.publish.lock',timeout=30):
-        _recover(root,work);_check_generation(root)
+        _recover(root,work)
+        _import_legacy(config,root,work)
+        _check_generation(root)
         if not full or len(full)!=len(interim):raise ValueError('Empty or mismatched publication')
         study=config.study.study_id;partition='|'.join((str(day),study,registry));partition_id=digest(partition)[:16]
         byid={r['observation_id']:r for r in interim}
@@ -92,12 +119,13 @@ def publish_rows(config,full,interim,sidecars,*,day,registry,source,audit_files=
             origin=byid.get(r['observation_id']) if natural_key(r) in new else oldshort.get(r['observation_id'])
             if origin is None:raise ValueError('Missing matching interim row')
             shorts.append({f:origin.get(f,'') for f in INTERIM_FIELDS})
-        m=read_json(root/'manifest.json') if (root/'manifest.json').exists() else {'schema_version':'interim_current_v1','partitions':{}}
+        m=read_json(root/'manifest.json') if (root/'manifest.json').exists() else {'schema_version':'processed_current_v1','partitions':{}}
+        m['audit_root']=str(work.parent/'publication')
         oldpart=m['partitions'].get(partition,{})
         audit_name=f'audit/{day}/{partition_id}'
         txn=work/('txn_'+uuid.uuid4().hex);stage=txn/'new';stage.mkdir(parents=True)
         day_stage=stage/audit_name
-        if not replace_partition and (root/audit_name).exists():shutil.copytree(root/audit_name,day_stage)
+        if not replace_partition and _target(root,work,audit_name).exists():shutil.copytree(_target(root,work,audit_name),day_stage)
         else:day_stage.mkdir(parents=True)
         old_sidecars=[]
         sidepath=day_stage/'sidecar.jsonl'
@@ -128,11 +156,11 @@ def publish_rows(config,full,interim,sidecars,*,day,registry,source,audit_files=
         m['table_hashes']={n:sha256(stage/n) for n in ('observations.csv','observations_full.csv')}
         write_json(stage/'manifest.json',m)
         names=[audit_name,'observations.csv','observations_full.csv','manifest.json']
-        entries=[{'name':n,'existed':(root/n).exists()} for n in names]
+        entries=[{'name':n,'existed':_target(root,work,n).exists()} for n in names]
         write_json(root/'.publish_recovery.json',{'transaction':str(txn),'entries':entries})
         try:
             for entry in entries:
-                target=root/entry['name'];target.parent.mkdir(parents=True,exist_ok=True)
+                target=_target(root,work,entry['name']);target.parent.mkdir(parents=True,exist_ok=True)
                 if target.exists():
                     backup=txn/'backup'/entry['name'];backup.parent.mkdir(parents=True,exist_ok=True);replace_file(target,backup)
                 replace_file(stage/entry['name'],target)

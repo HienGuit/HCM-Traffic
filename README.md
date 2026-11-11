@@ -139,19 +139,20 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
 - `.local/project/`: reports, decisions and migration evidence.
 - `.local/tmp/` and `.local/pip-cache/`: temporary files and installation cache.
 - `.local/python/`: optional portable Python installation (used on the current local setup).
-- `data/processed/`: processing outputs.
+- `data/interim/`: transform runs, input inventories, staging, intervals and association diagnostics.
 - `.local/cache/`: disposable decode cache.
 - `.local/state/`: persistent attempt ledger and scheduler/job state; retain when restarting or upgrading.
 - `.local/archive/`: earlier output generations and migration backups.
 - `.local/pilots/`: pilot inputs and outputs.
 - `.local/dev/`: development runs, build staging and packages.
 - `data/raw/`: original responses and capture metadata.
-- `data/interim/observations.csv`: the main 15-column analysis table.
-- `data/interim/observations_full.csv`: the full table with matching observation keys.
-- `data/interim/audit/` and `manifest.json`: diagnostics and provenance.
+- `data/processed/observations.csv`: the main 15-column analysis table.
+- `data/processed/observations_full.csv`: the full table with matching observation keys.
+- `data/interim/publication/audit/`: published-table diagnostics, linked by `data/processed/manifest.json`.
+- `data/processed/manifest.json`: final table hashes, partitions and provenance.
 - `logs/`: operational progress and error logs.
 
-The tables accumulate study dates and replace reprocessed observations by their natural keys. All default generated folders stay inside this project and are excluded from Git. Python 3.11 must already be available for setup; a portable installation may live in `.local/python/`. Recreate `.venv/` after moving the project. Existing historical backups are not removed. External roots remain supported when explicitly configured.
+Final tables are published only after transform invariants pass; unavailable measurements retain nulls and reason codes. Historical outputs remain intact; a verified legacy final generation in `interim/` is copied into `processed/` on first publication/read. The tables accumulate study dates and replace reprocessed observations by their natural keys. All default generated folders stay inside this project and are excluded from Git. Python 3.11 must already be available for setup; a portable installation may live in `.local/python/`. Recreate `.venv/` after moving the project. Existing historical backups are not removed. External roots remain supported when explicitly configured.
 
 ## Attribution
 

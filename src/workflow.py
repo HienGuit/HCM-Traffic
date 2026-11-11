@@ -32,7 +32,7 @@ def offline_task(record,config,paths,job_key):
     with network_off():
         Progress(config.output(f'logs/{config.study.dates[0]}.log'))('Transform started',scheduled_at=record['scheduled_at'])
         if _WORKER_GRAPH is None:_WORKER_GRAPH=load_graph(config.study.graph_cache)
-        inventory=config.output('processed/inputs/'+job_key+'.json')
+        inventory=config.output('interim/inputs/'+job_key+'.json')
         clean={k:record.get(k) for k in ('scheduled_at','snapshot','snapshot_id','status')}
         if clean.get('snapshot'):
             clean['snapshot_id']=read_json(Path(clean['snapshot'])/'manifest.json')['snapshot_id']
@@ -91,7 +91,7 @@ class ETLQueue:
                 published=self.publisher(self.config,result['run'])
                 self.state.set_job(*args,'published',result_path=result['run'])
                 self.results.append(published)
-                self.progress('Interim updated',rows=published['rows'],day_rows=published['partition_rows'])
+                self.progress('Final tables updated',rows=published['rows'],day_rows=published['partition_rows'])
                 self.progress('Today',**day_counts(self.config,record['scheduled_at'][:10]))
             except Exception as exc:
                 status='publish_failed' if result else 'processing_failed'
@@ -134,7 +134,7 @@ def run_day(config,day,*,allow_online=False,clock=None,state=None,budget=None,tr
         if not check['ready']:return {'ready':False,**check}
         progress('Ready',date=day,timezone=config.study.timezone,segment_directions=len(paths),slots=config.study.slots,
             traffic_resources=sum(r.provider=='traffic' for r in plan.resources),weather_resources=sum(r.provider=='weather' for r in plan.resources),
-            weather_daily_cap=config.budget.weather_daily_attempt_cap,traffic_daily_cap=config.budget.traffic_daily_attempt_cap,raw=config.output('raw'),interim=config.output('interim'))
+            weather_daily_cap=config.budget.weather_daily_attempt_cap,traffic_daily_cap=config.budget.traffic_daily_attempt_cap,raw=config.output('raw'),interim=config.output('interim'),processed=config.output('processed'))
         reconcile(state,config)
         queue=queue_factory(config,paths,state,progress)
         transport=transport or Transport(config.sources,clock);budget=budget or BudgetController(state,config.budget,clock)
@@ -156,7 +156,7 @@ def run_day(config,day,*,allow_online=False,clock=None,state=None,budget=None,tr
         inventory=config.output(f'raw/{config.study.study_id}/{day}/inventory_{session}.json')
         write_json(inventory,{'collection_kind':'scheduled','snapshots':current,'config_hash':config.hash,'interrupted':interrupted},immutable=True)
         statuses={s:sum(r['status']==s for r in current) for s in ('complete','partial','missed','interrupted')}
-        result={'status':'interrupted' if interrupted else 'failed' if queue.errors or statuses['interrupted'] or len(current)!=len(config.study.slots) else 'complete','inventory':str(inventory),'slots':len(current),'raw_status_counts':statuses,**day_counts(config,day),'errors':queue.errors,'interim':str(config.output('interim/observations.csv'))}
+        result={'status':'interrupted' if interrupted else 'failed' if queue.errors or statuses['interrupted'] or len(current)!=len(config.study.slots) else 'complete','inventory':str(inventory),'slots':len(current),'raw_status_counts':statuses,**day_counts(config,day),'errors':queue.errors,'processed':str(config.output('processed/observations.csv'))}
         progress('Day finished',**result);return result
 
 
