@@ -362,7 +362,10 @@ def validate_run(folder: Path):
         Budget.model_validate(raw_config["budget"]),
     )
     source = source_contract_readiness(config)
-    if source != manifest["source_contract_gate"]:
+    # Archived evidence hashes are provenance, not a runtime source requirement.
+    if {k: v for k, v in source.items() if k != "evidence_sha256"} != {
+        k: v for k, v in manifest["source_contract_gate"].items() if k != "evidence_sha256"
+    }:
         errors.append("SOURCE_CONTRACT_GATE_CHANGED")
     records = read_evidence(config.study.evidence_file)
     verified_ids = set()

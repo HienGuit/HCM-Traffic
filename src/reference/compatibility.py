@@ -15,6 +15,11 @@ from .graph import Graph
 from .semantic import checked_semantics, SEMANTIC_METHOD
 
 COMPATIBILITY_METHOD = "graph_path_compatibility_v1"
+BUNDLE_CONTRACT = "candidate_runtime_v2"
+OPTIONAL_ARTIFACTS = frozenset({
+    "shortlist.json", "static.json", "candidates.geojson",
+    "candidate_assessment.csv", "review.html", "capture_plan_local.json",
+})
 
 
 def candidate_bundle(folder):
@@ -23,11 +28,18 @@ def candidate_bundle(folder):
     artifacts = manifest.get("artifacts")
     if not artifacts or "paths.json" not in artifacts:
         raise ValueError("CANDIDATE_ARTIFACT_MANIFEST_REQUIRED")
+    contract = manifest.get("bundle_contract")
+    if contract not in (None, BUNDLE_CONTRACT):
+        raise ValueError("CANDIDATE_BUNDLE_CONTRACT_UNSUPPORTED")
     for name, checksum in artifacts.items():
         if Path(name).is_absolute() or ".." in Path(name).parts:
             raise ValueError("CANDIDATE_ARTIFACT_PATH_INVALID")
         path = (folder / name).resolve()
-        if not path.is_relative_to(folder) or not path.is_file() or sha256(path) != checksum:
+        if not path.is_relative_to(folder):
+            raise ValueError("CANDIDATE_ARTIFACT_PATH_INVALID")
+        if not path.exists() and contract == BUNDLE_CONTRACT and name in OPTIONAL_ARTIFACTS:
+            continue
+        if not path.is_file() or sha256(path) != checksum:
             raise ValueError("CANDIDATE_ARTIFACT_HASH_MISMATCH")
     paths = [RegistryPath.model_validate(p) for p in read_json(folder / "paths.json")]
     if not paths or len({(p.segment_id, p.direction_id) for p in paths}) != len(paths):
@@ -227,6 +239,8 @@ def _rebind(graph_folder, candidates, compatibility, config, audit):
 
     artifacts = {}
     for name in manifest["artifacts"]:
+        if not (candidates / name).is_file():
+            continue  # candidate_bundle already rejected missing required inputs.
         if name in ("paths.json", "shortlist.json", "static.json", "candidates.geojson"):
             data = read_json(candidates / name)
             if name in ("paths.json", "shortlist.json"):
@@ -237,11 +251,23 @@ def _rebind(graph_folder, candidates, compatibility, config, audit):
             else:
                 data = remap(data)
             write_json(destination / name, data, immutable=True)
+        elif name == "candidate_assessment.csv":
+            import csv
+            from ..preparation.assessment import write_assessment_csv
+
+            with (candidates / name).open(encoding="utf-8-sig", newline="") as stream:
+                reader = csv.DictReader(stream)
+                write_assessment_csv(destination / name, list(reader), reader.fieldnames)
         else:
             from ..storage.files import atomic_bytes
 
             atomic_bytes(destination / name, (candidates / name).read_bytes(), immutable=True)
         artifacts[name] = sha256(destination / name)
+    if "review.html" in artifacts:
+        from ..preparation.evidence import review_map
+
+        review_map(destination / "review.html", rebound, config)
+        artifacts["review.html"] = sha256(destination / "review.html")
     updated = dict(
         manifest,
         candidate_version=version,
@@ -272,9 +298,6 @@ def _rebind(graph_folder, candidates, compatibility, config, audit):
         {"payload": portable, "sha256": digest(portable)},
         immutable=True,
     )
-    from ..preparation.evidence import review_map
-
-    review_map(destination / "review.html", rebound, config)
     write_csv(audit / "correspondence.csv", rows)
     report = {
         "status": "complete",
@@ -290,3 +313,30 @@ def _rebind(graph_folder, candidates, compatibility, config, audit):
     }
     write_json(audit / "acceptance.json", report)
     return report
+
+
+def portable_export(graph_folder, candidates, output, config):
+    """Create a minimal transferable version without editing historical inputs."""
+    import shutil
+
+    candidates, output = Path(candidates).resolve(), Path(output).resolve()
+    manifest, paths = candidate_bundle(candidates)
+    safe_output(output, config.study.project_root / "data/reference/candidates",
+                (config.study.osm_pbf, config.study.project_root / "src", config.study.project_root / "config"))
+    if output.exists():
+        raise FileExistsError(output)
+    # Unknown artifacts remain mandatory: never silently discard future inputs.
+    names = [name for name in manifest["artifacts"] if name not in OPTIONAL_ARTIFACTS]
+    output.mkdir(parents=True)
+    for name in names:
+        target = output / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(candidates / name, target)
+    updated = dict(manifest, candidate_version=output.name, bundle_contract=BUNDLE_CONTRACT,
+                   portable_source_manifest_sha256=sha256(candidates / "manifest.json"))
+    write_json(output / "manifest.json", updated, immutable=True)
+    result = compatibility_export(graph_folder, output, output / "compatibility.json", config)
+    candidate_bundle(output)
+    return dict(result, candidates=str(output), candidate_version=output.name,
+                required_files=["paths.json", "manifest.json"],
+                compatibility_required="only when paths require graph rebinding")

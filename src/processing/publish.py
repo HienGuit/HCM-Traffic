@@ -1,4 +1,4 @@
-"""Final tables in processed; staging and audits in interim."""
+"""Accumulate collect/transform tables and audits in interim; preserve legacy outputs."""
 import csv
 import json
 import os
@@ -22,7 +22,7 @@ def natural_key(row):
     return (row['study_id'],row['registry_version'],row['segment_id'],row['direction_id'],instant)
 
 def _paths(config):
-    root=config.output('processed');root.mkdir(parents=True,exist_ok=True)
+    root=config.output('interim/publication');root.mkdir(parents=True,exist_ok=True)
     work=config.output('interim/publish');work.mkdir(parents=True,exist_ok=True)
     return root,work
 
@@ -32,21 +32,46 @@ def _target(root,work,name):
 
 
 def _import_legacy(config,root,work):
-    """Copy verified legacy final tables once; preserve historical originals."""
+    """Import a verified prior generation once, without writing historical roots."""
     if (root/'manifest.json').exists():return
-    legacy=config.output('interim')
-    if not (legacy/'manifest.json').exists():return
-    with portalocker.Lock(legacy/'.publish.lock',timeout=30):
-        _recover(legacy,config.output('processed/publish'),legacy=True)
+    # The previous runtime wrote processed; older versions wrote interim directly.
+    for legacy in (config.output('processed'),config.output('interim')):
+        if not (legacy/'manifest.json').exists():continue
+        if (legacy/'.publish_recovery.json').exists():
+            raise ValueError('LEGACY_PUBLISH_RECOVERY_REQUIRED: '+str(legacy))
+        source_manifest_sha256=sha256(legacy/'manifest.json')
         _check_generation(legacy)
         m=read_json(legacy/'manifest.json')
-        for name in ('observations.csv','observations_full.csv'):
-            atomic_bytes(root/name,(legacy/name).read_bytes())
-        if (legacy/'audit').exists():
-            shutil.copytree(legacy/'audit',work.parent/'publication/audit',dirs_exist_ok=True)
-        m.update(schema_version='processed_current_v1',audit_root=str(work.parent/'publication'),
+        txn=work/('txn_'+uuid.uuid4().hex);stage=txn/'new';stage.mkdir(parents=True)
+        names=['observations.csv','observations_full.csv']
+        for name in names:
+            shutil.copy2(legacy/name,stage/name)
+        audit=resolve_artifact(Path(m.get('audit_root',str(legacy))),config.study.relocation_file)/'audit'
+        if audit.is_dir() and audit.resolve() != (root/'audit').resolve():
+            shutil.copytree(audit,stage/'audit')
+            names.insert(0,'audit')
+        if any(sha256(stage/name) != checksum for name,checksum in m['table_hashes'].items()):
+            raise ValueError('INTERIM_GENERATION_HASH_MISMATCH')
+        if sha256(legacy/'manifest.json') != source_manifest_sha256:
+            raise ValueError('LEGACY_GENERATION_CHANGED_DURING_IMPORT')
+        m.update(schema_version='interim_current_v2',audit_root=str(root),
                  migrated_from=str(legacy/'manifest.json'))
-        write_json(root/'manifest.json',m)
+        write_json(stage/'manifest.json',m);names.append('manifest.json')
+        entries=[{'name':name,'existed':_target(root,work,name).exists()} for name in names]
+        write_json(root/'.publish_recovery.json',{'transaction':str(txn),'entries':entries})
+        try:
+            for entry in entries:
+                target=_target(root,work,entry['name'])
+                target.parent.mkdir(parents=True,exist_ok=True)
+                if target.exists():
+                    backup=txn/'backup'/entry['name'];backup.parent.mkdir(parents=True,exist_ok=True)
+                    os.replace(target,backup)
+                os.replace(stage/entry['name'],target)
+        except Exception:
+            _recover(root,work)
+            raise
+        (root/'.publish_recovery.json').unlink()
+        return
 
 
 def _recover(root,work,*,legacy=False):
@@ -119,7 +144,7 @@ def publish_rows(config,full,interim,sidecars,*,day,registry,source,audit_files=
             origin=byid.get(r['observation_id']) if natural_key(r) in new else oldshort.get(r['observation_id'])
             if origin is None:raise ValueError('Missing matching interim row')
             shorts.append({f:origin.get(f,'') for f in INTERIM_FIELDS})
-        m=read_json(root/'manifest.json') if (root/'manifest.json').exists() else {'schema_version':'processed_current_v1','partitions':{}}
+        m=read_json(root/'manifest.json') if (root/'manifest.json').exists() else {'schema_version':'interim_current_v2','partitions':{}}
         m['audit_root']=str(work.parent/'publication')
         oldpart=m['partitions'].get(partition,{})
         audit_name=f'audit/{day}/{partition_id}'

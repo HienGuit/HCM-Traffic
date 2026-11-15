@@ -1,11 +1,11 @@
-"""Bounded four-road candidate survey using the existing graph traversal generator."""
+"""Bounded target-road candidate survey using the existing graph traversal generator."""
 
 from pathlib import Path
 from datetime import datetime, timezone
 import math
 import html
 from shapely.geometry import box, mapping
-from ..storage.files import read_json, write_json, write_csv, sha256, digest
+from ..storage.files import read_json, write_json, sha256, digest
 from ..storage.paths import safe_output
 from ..geo.crs import project
 from ..geo.linear import path_geometry
@@ -13,6 +13,7 @@ from ..domain.reference import PathEdge
 from ..reference.static import static_features
 from ..provenance import source_fingerprint
 from .candidates import generate_candidates
+from .assessment import write_assessment_csv
 from .filters import CandidateFilter, road_key
 
 
@@ -170,8 +171,8 @@ def survey_candidates(graph, config):
     targets = read_json(repo / policy["targets_file"])
     exclusions = read_json(repo / policy["exclusions_file"])
     watchlist = read_json(repo / policy["watchlist_file"])
-    if len(targets["roads"]) != 4 or len({r["road_id"] for r in targets["roads"]}) != 4:
-        raise ValueError("Exactly four unambiguous target roads required")
+    if not targets["roads"] or len({r["road_id"] for r in targets["roads"]}) != len(targets["roads"]):
+        raise ValueError("Non-empty target roads with unique road_id required")
     filtering = CandidateFilter(exclusions["features"], graph)
     rows = []
     drafts = []
@@ -446,9 +447,10 @@ def survey_candidates(graph, config):
         destination / "candidates.geojson", {"type": "FeatureCollection", "features": physical}
     )
     fields = sorted({k for r in rows for k in r})
-    write_csv(destination / "candidate_assessment.csv", rows, fields)
+    write_assessment_csv(destination / "candidate_assessment.csv", rows, fields)
     write_json(destination / "static.json", static)
     manifest = {
+        "bundle_contract": "candidate_runtime_v2",
         "candidate_version": version,
         "target_roads": targets["roads"],
         "input_hashes": hashes,
@@ -534,7 +536,7 @@ def render_review(path, physical, exclusions, graph, watchlist, static):
             f'<polyline points="{coords(f["geometry"]["coordinates"])}" fill="none" stroke="#075985" stroke-width="4"><title>{html.escape(str(f["properties"]))}</title></polyline>'
         )
     path.write_text(
-        '<html><meta charset="utf-8"><h1>Four-road candidate review</h1><p>Blue: selected physical paths. Orange: original survey exclusions (line buffers applied in computation). Draft only. Normal intersections and signals are retained. WATCH_D3 has no fabricated geometry; relevance remains unreviewed.</p><svg viewBox="0 0 1080 880">'
+        '<html><meta charset="utf-8"><h1>Target-road candidate review</h1><p>Blue: selected physical paths. Orange: original survey exclusions (line buffers applied in computation). Draft only. Normal intersections and signals are retained. WATCH_D3 has no fabricated geometry; relevance remains unreviewed.</p><svg viewBox="0 0 1080 880">'
         + "".join(pieces)
         + "</svg><pre>"
         + html.escape(str(watchlist))

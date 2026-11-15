@@ -77,6 +77,13 @@ def preflight(plan, config, allow_online=False, *, state=None, day=None, clock=N
         from ..storage.files import read_json, sha256, digest
 
         selection = read_json(config.study.operational_selection_file)
+        from ..reference.compatibility import candidate_bundle, BUNDLE_CONTRACT
+
+        if selection.get("bundle_contract") == BUNDLE_CONTRACT:
+            try:
+                candidate_bundle(config.study.operational_selection_file.parent)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                reasons.append(str(exc))
         if (
             config.study.selected_paths_file is None
             or sha256(config.study.selected_paths_file) != selection["artifacts"]["paths.json"]
@@ -110,7 +117,7 @@ def preflight(plan, config, allow_online=False, *, state=None, day=None, clock=N
     if worst > config.budget.deadline_s:
         reasons.append("DEADLINE_INFEASIBLE")
     config.output("raw/guard")
-    for category in ('raw','interim','processed'):
+    for category in ('raw','interim'):
         root=config.output(category);root.mkdir(parents=True,exist_ok=True)
         probe=root/('.preflight_probe_'+uuid.uuid4().hex)
         try:probe.write_bytes(b'ok')

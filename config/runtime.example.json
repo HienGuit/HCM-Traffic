@@ -1,5 +1,5 @@
 {
   "python": "../../.venv/Scripts/python.exe",
   "config": "study.yaml",
-  "plan": "../../data/reference/candidates/<candidate_version>/capture_plan_local.json"
+  "plan": "../../data/reference/plans/<plan_id>.json"
 }

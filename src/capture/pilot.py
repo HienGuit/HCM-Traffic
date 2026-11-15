@@ -19,11 +19,9 @@ def prepare_pilot(candidate_folder, pilot_id, graph, config, allow_online=False)
     if Path(pilot_id).name != pilot_id or pilot_id in (".", ".."):
         raise ValueError("Plain pilot_id required")
     candidate_folder = candidate_folder.resolve()
-    manifest = read_json(candidate_folder / "manifest.json")
-    for name, checksum in manifest["artifacts"].items():
-        item = (candidate_folder / name).resolve()
-        if not item.is_relative_to(candidate_folder) or sha256(item) != checksum:
-            raise ValueError("Candidate artifact hash mismatch")
+    from ..reference.compatibility import candidate_bundle, BUNDLE_CONTRACT
+
+    manifest, selected = candidate_bundle(candidate_folder)
     if manifest["graph_version"] != graph.version:
         raise ValueError("Candidate graph mismatch")
     root = config.study.pilot_output_root or config.study.project_files_root / "pilots"
@@ -33,7 +31,8 @@ def prepare_pilot(candidate_folder, pilot_id, graph, config, allow_online=False)
     pilot = ResolvedConfig(study, config.policy, config.sources, config.budget)
     paths = [
         p.model_copy(update={"registry_version": "pilot_" + manifest["candidate_version"]})
-        for p in read_paths(candidate_folder / "shortlist.json")
+        for p in (selected if manifest.get("bundle_contract") == BUNDLE_CONTRACT
+                  else read_paths(candidate_folder / "shortlist.json"))
     ]
     registry = pilot.output("registry/paths.json")
     write_json(registry, [p.model_dump(mode="json") for p in paths], immutable=True)
@@ -212,7 +211,7 @@ def run_pilot(
                 inventories.append(str(inventory))
                 transformed = process_inventory(inventory, paths, graph, pilot, force=True)
                 results.append({"snapshot": snapshot, "transform": transformed})
-                write_json(pilot.output("processed/pilot_progress.json"), results)
+                write_json(pilot.output("interim/reports/pilot_progress.json"), results)
                 if snapshot["status"] != "complete" or transformed["status"] != "passed":
                     break
                 errors = Path(transformed["run"]) / "audit/errors.jsonl"
@@ -229,7 +228,7 @@ def run_pilot(
         snapshots_completed=len(results),
         ready=bool(results),
     )
-    write_json(pilot.output("processed/pilot_result.json"), report)
+    write_json(pilot.output("interim/reports/pilot_result.json"), report)
     if results:
         write_json(
             pilot.output("raw/inventory_campaign.json"),
@@ -305,5 +304,5 @@ def run_pilot(
                 )
                 previous[key] = signature
         fields = sorted({k for row in quality for k in row})
-        write_csv(pilot.output("processed/quality.csv"), quality, fields)
+        write_csv(pilot.output("interim/reports/quality.csv"), quality, fields)
     return report

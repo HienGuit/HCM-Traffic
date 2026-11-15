@@ -110,12 +110,22 @@ def assess_candidates(candidates, graph, config):
     return rows, static, shortlist
 
 
+ASSESSMENT_HIDDEN_COLUMNS = frozenset({"source_bundle", "scientific_approval_changed", "status"})
+
+
+def write_assessment_csv(path, rows, fields=None):
+    """Project CSV columns without mutating internal assessment/review records."""
+    fields = fields if fields is not None else list(dict.fromkeys(k for row in rows for k in row))
+    fields = [key for key in fields if key not in ASSESSMENT_HIDDEN_COLUMNS]
+    write_csv(path, [{key: row.get(key) for key in fields} for row in rows], fields)
+
+
 def export_candidates(folder, candidates, rows, static, shortlist, stats, config):
     folder.mkdir(parents=True, exist_ok=False)
     write_json(folder / "paths.json", [p.model_dump(mode="json") for p in candidates])
     write_json(folder / "shortlist.json", [p.model_dump(mode="json") for p in shortlist])
     write_json(folder / "static.json", static)
-    write_csv(folder / "candidate_assessment.csv", rows)
+    write_assessment_csv(folder / "candidate_assessment.csv", rows)
     lookup = {r["candidate_id"]: r for r in rows}
     features = [
         {"type": "Feature", "geometry": p.geometry, "properties": lookup[p.segment_id]}

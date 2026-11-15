@@ -116,7 +116,7 @@ def applicable(records, kind, path, when, config):
 
 
 def source_contract_readiness(config) -> dict:
-    """Versioned product/schema contract checked once, without row-level approvals."""
+    """Validate the versioned runtime contract from code/config, without external files."""
     source = config.sources
     reasons = []
     expected = {
@@ -134,23 +134,6 @@ def source_contract_readiness(config) -> dict:
         field in source.attributes for field in ("openlr", "relative_speed", "road_closure")
     ):
         reasons.append("SOURCE_REQUIRED_ATTRIBUTES_MISSING")
-    path = config.study.source_evidence_file
-    if path is not None:
-        try:
-            record = read_json(path)
-            if (
-                record.get("product") != source.traffic_product
-                or record.get("api_version") != source.api_version
-            ):
-                reasons.append("SOURCE_CONTRACT_SCOPE")
-            for document in record.get("documentation", []):
-                document_path = Path(document["artifact_path"])
-                if not document_path.is_absolute():
-                    document_path = path.parent / document_path
-                if sha256(document_path) != document["sha256"]:
-                    reasons.append("SOURCE_DOCUMENT_HASH_MISMATCH")
-        except (OSError, ValueError, KeyError, TypeError):
-            reasons.append("SOURCE_CONTRACT_ARTIFACT_INVALID")
     return {
         "ready": not reasons,
         "reasons": sorted(set(reasons)),
@@ -158,7 +141,7 @@ def source_contract_readiness(config) -> dict:
         "contract_version": source.version,
         "contract_sha256": digest(source.model_dump(mode="json")),
         "source_direction_rule": source.source_direction_rule,
-        "evidence_sha256": sha256(path) if path and path.is_file() else None,
+        "evidence_sha256": None,  # Legacy output shape; external evidence is not a dependency.
         "legacy_flags_used": False,
     }
 

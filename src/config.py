@@ -112,7 +112,7 @@ class Budget(Contract):
     max_attempts: int = Field(default=3, gt=0, le=3, strict=True)
     timeout_s: float = Field(gt=0, le=10)
     deadline_s: float = Field(gt=0, le=120)
-    pilot_snapshots: int = Field(gt=0, le=3)
+    pilot_snapshots: int = Field(gt=0, le=5)
     pilot_spacing_s: int = Field(ge=300)
     pilot_tiles: int = Field(gt=0)
     pilot_weather: int = Field(ge=0)
@@ -145,7 +145,9 @@ class Study(Contract):
     provisional: bool
     vehicle_scope: str = "motor_vehicle"
     evidence_file: Path | None = None
-    source_evidence_file: Path | None = None
+    source_evidence_file: Path | None = Field(
+        default=None, description="Legacy provenance only; ignored by runtime source checks."
+    )
     registry_artifact: Path | None = None
     candidate_policy_file: Path | None = None
     candidate_checks_root: Path | None = None
@@ -246,10 +248,10 @@ class ResolvedConfig:
             checked = safe_output(target if len(parts) > 1 else root / ".output_guard", root, self._protected(root))
             return checked if len(parts) > 1 else checked.parent
         if parts[0] == "logs":
-            root = self.study.log_root or self.study.project_root / "logs"
+            root = self.study.pilot_run_root / "logs" if self.study.pilot_run_root is not None else (self.study.log_root or self.study.project_root / "logs")
             return safe_output(root.joinpath(*parts[1:]),root,
                 (self.study.osm_pbf,self.study.project_root/"src",self.study.project_root/"config"))
-        if parts[0] == "settings":
+        if parts[0] == "settings" and self.study.pilot_run_root is None:
             raise ValueError("Runtime settings belong to config/local, not data/settings")
         if parts[0] == "plans":
             relative = str(Path("reference/plans").joinpath(*parts[1:]))
@@ -267,7 +269,7 @@ class ResolvedConfig:
                 self._protected(cache_root),
             )
         if parts[0] == "state":
-            state_root=self.study.state_root or local/'state'
+            state_root=self.study.pilot_run_root/'state' if self.study.pilot_run_root is not None else (self.study.state_root or local/'state')
             return safe_output(
                 state_root.joinpath(*parts[1:]),
                 state_root,

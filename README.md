@@ -16,6 +16,8 @@ The study configuration selects directed road segments and collection times. The
 
 Congestion intensity is the length-weighted mean of `1 - relative_speed`. Current speed uses a harmonic mean over its own valid interval support. Each measure must meet the configured coverage threshold. Weather and static road features are joined to the resulting observations before tabular export.
 
+The versioned source contract is checked from `config/source_contracts.yaml` and code. Collection and CI do not require an external source-evidence JSON or documentation HTML file.
+
 ## Setup
 
 1. Open PowerShell in the repository root and create a Python 3.11 environment:
@@ -48,8 +50,8 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
 4. Add the local inputs:
 
    - PBF: `data/external/<filename>.osm.pbf`.
-   - Candidate bundle: `candidates.geojson`, `paths.json`, `candidate_assessment.csv`, `shortlist.json`, `static.json`, `manifest.json`, `compatibility.json` under `data/reference/candidates/<candidate_version>/`.
-   - Source evidence and referenced artifacts, only if configured.
+   - Portable candidate bundle (`candidate_runtime_v2`): `paths.json` and `manifest.json` under `data/reference/candidates/<candidate_version>/`.
+   - Add the matching `compatibility.json` if the rebuilt graph requires rebinding. Reports, shortlist and static JSON are optional; transform computes static features from the graph. Legacy bundles retain their original required files.
 
 5. Edit `study.yaml`, `budget.yaml` and `runtime.json` in `config/local/`:
 
@@ -57,7 +59,7 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
    - Set `osm_pbf` relative to `data_root`, for example `external/<filename>.osm.pbf`.
    - Set other relative paths from the declaring config file's directory.
    - Set runtime `python` to the environment from step 1, `config` to `study.yaml`, and `plan` to the configured capture plan.
-   - Set `capture_plan_file` to `../../data/reference/candidates/<candidate_version>/capture_plan_local.json`.
+   - Set `capture_plan_file` and runtime `plan` to the generated `../../data/reference/plans/<plan_id>.json` in step 7.
 
 6. Build the graph from the configured PBF offline; valid cached artifacts are reused:
 
@@ -80,7 +82,7 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
    $version = $migration.candidate_version
    ```
 
-   Set `graph_cache` in `study.yaml` to `../../data/reference/graph/<graph_version>` using the returned graph version. Set `selected_paths_file`, `operational_selection_file`, `capture_plan_file` and runtime `plan` to the selected candidate version. A graph/config mismatch is resolved by these path settings; a failed compatibility check must not be bypassed. No config or candidate approval is changed automatically.
+   Set `graph_cache` in `study.yaml` to `../../data/reference/graph/<graph_version>` using the returned graph version. Set `selected_paths_file` and `operational_selection_file` to the selected candidate version. Set the capture-plan paths after step 7. A graph/config mismatch is resolved by these path settings; a failed compatibility check must not be bypassed. No config or candidate approval is changed automatically.
 
 7. Generate the local capture plan offline after finishing configuration:
 
@@ -90,10 +92,10 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
    if ($LASTEXITCODE -ne 0) { $result; throw "Plan generation failed" }
    $plan = $result | ConvertFrom-Json
    if (-not $plan.plan) { $result; throw "Plan output is missing its path" }
-   Copy-Item -LiteralPath $plan.plan -Destination "data/reference/candidates/$version/capture_plan_local.json"
+   $plan.plan
    ```
 
-   Regenerate the plan after changing capture scope, schedule, source contract or budget. Moving storage directories alone does not invalidate a new portable plan; resolved paths remain recorded separately as provenance. Historical plans retain their original hash rules.
+   Set `capture_plan_file` and runtime `plan` to the returned file, relative to `config/local/`. Keep the generated plan separate from the immutable candidate bundle. Regenerate the plan after changing capture scope, schedule, source contract or budget. Moving storage directories alone does not invalidate a new portable plan; resolved paths remain recorded separately as provenance. Historical plans retain their original hash rules.
 
 8. Run offline checks; set the key in this PowerShell process to avoid `KEY_MISSING` in dry-run:
 
@@ -104,15 +106,19 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
    .\scripts\operate.ps1 -Action dry-run -Date YYYY-MM-DD
    ```
 
-   Before transferring an older candidate bundle without `compatibility.json`, export its companion once on the source machine using the matching validated graph:
+   On the source machine, export a minimal transferable bundle once using its matching validated graph:
 
    ```powershell
-   & $python -B main.py --config config/local/study.yaml reference compatibility-export --graph "<source_graph_folder>" --candidates "data/reference/candidates/<source_candidate_version>" --output ".local/project/compatibility.json"
+   & $python -B main.py --config config/local/study.yaml reference portable-export --graph "<source_graph_folder>" --candidates "data/reference/candidates/<source_candidate_version>" --output "data/reference/candidates/<portable_candidate_version>"
    ```
 
-   Include that file as `compatibility.json` in the transferred bundle. It binds the source manifest, ordered paths, offsets and complete graph semantics; no source graph copy is required on the new machine. Rebinding fails if the rebuilt network differs.
+   Copy the output folder to the new machine. It contains `paths.json`, `manifest.json` and `compatibility.json`; historical bundles stay unchanged. Other artifacts listed in a v2 manifest may be omitted only when classified as optional reports or recomputable static data; any present artifact must match its hash. Unknown artifacts remain required.
+
+   Graph version identifies the reference build inputs and algorithms, not the machine or directory. If paths and the rebuilt graph have the same version, no rebinding or compatibility file is needed. If versions differ, use the companion for step 6: it proves complete network equivalence and exact selected-edge correspondence without copying the old graph. It never replaces the PBF/new graph or permits changed roads. Changed network semantics cause rebinding to fail.
 
 ## Usage
+
+Schedule: 16:00-19:00 every 5 minutes, inclusive (37 snapshots/day), Asia/Ho_Chi_Minh. Start before 16:00.
 
 `collect`: collect the specified day's scheduled slots, automatically transform and update CSVs; enter the key when prompted and keep the window open until completion.
 
@@ -146,13 +152,13 @@ Congestion intensity is the length-weighted mean of `1 - relative_speed`. Curren
 - `.local/pilots/`: pilot inputs and outputs.
 - `.local/dev/`: development runs, build staging and packages.
 - `data/raw/`: original responses and capture metadata.
-- `data/processed/observations.csv`: the main 15-column analysis table.
-- `data/processed/observations_full.csv`: the full table with matching observation keys.
-- `data/interim/publication/audit/`: published-table diagnostics, linked by `data/processed/manifest.json`.
-- `data/processed/manifest.json`: final table hashes, partitions and provenance.
+- `data/interim/publication/observations.csv`: the accumulated 15-column transform table.
+- `data/interim/publication/observations_full.csv`: the full table with matching observation keys.
+- `data/interim/publication/audit/`: published-table diagnostics, linked by `data/interim/publication/manifest.json`.
+- `data/interim/publication/manifest.json`: intermediate table hashes, partitions and provenance.
 - `logs/`: operational progress and error logs.
 
-Final tables are published only after transform invariants pass; unavailable measurements retain nulls and reason codes. Historical outputs remain intact; a verified legacy final generation in `interim/` is copied into `processed/` on first publication/read. The tables accumulate study dates and replace reprocessed observations by their natural keys. All default generated folders stay inside this project and are excluded from Git. Python 3.11 must already be available for setup; a portable installation may live in `.local/python/`. Recreate `.venv/` after moving the project. Existing historical backups are not removed. External roots remain supported when explicitly configured.
+Collect/transform outputs remain in `interim/`, including accumulated observations, audits and staging; they are not final datasets. `data/processed/` is reserved for a later final-data step and is not written by collect, transform or dry-run. Tables are updated only after transform invariants pass; unavailable measurements retain nulls and reason codes. On first use, a verified historical generation from the configured legacy `processing_root` (default `data/processed/`), or older tables directly under `data/interim/`, is copied into `data/interim/publication/`; originals remain unchanged. The tables accumulate study dates and replace reprocessed observations by their natural keys. All default generated folders stay inside this project and are excluded from Git. Python 3.11 must already be available for setup; a portable installation may live in `.local/python/`. Recreate `.venv/` after moving the project. Existing historical backups are not removed. External roots remain supported when explicitly configured.
 
 ## Attribution
 

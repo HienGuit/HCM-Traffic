@@ -70,7 +70,7 @@ def _process(inventory_path, paths, graph, config, force, run_artifact, update_p
     evidence = read_evidence(config.study.evidence_file)
     source_gate = source_contract_readiness(config)
     registry_gate = validate_registry(paths, graph, evidence, config)
-    for p in (config.study.evidence_file, config.study.source_evidence_file):
+    for p in (config.study.evidence_file,):
         if p and p.is_file():
             hashes[str(p)] = sha256(p)
     for record in evidence:

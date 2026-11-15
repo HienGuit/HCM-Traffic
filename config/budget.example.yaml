@@ -1,4 +1,4 @@
-version: daily_application_budget_v1
+version: daily_5m_1600_1900_v1
 scope: fresh_implementation_v1
 quota_mode: server_observed
 traffic_remaining: null
@@ -16,6 +16,6 @@ pilot_spacing_s: 300
 pilot_tiles: 4
 pilot_weather: 1
 authorized_dates: []
-traffic_daily_attempt_cap: 200
-weather_daily_attempt_cap: 200
+traffic_daily_attempt_cap: 1221
+weather_daily_attempt_cap: 1332
 accounting_timezone: Asia/Ho_Chi_Minh

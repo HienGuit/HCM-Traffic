@@ -12,22 +12,22 @@ bbox: [106.55, 10.65, 106.85, 10.95]
 graph_buffer_m: 3000.0
 metric_crs: EPSG:32648
 timezone: Asia/Ho_Chi_Minh
-schedule_version: afternoon_30m_v1
-slots: ['16:30', '17:00', '17:30', '18:00', '18:30']
+schedule_version: afternoon_5m_1600_1900_v1
+slots: ['16:00', '16:05', '16:10', '16:15', '16:20', '16:25', '16:30', '16:35', '16:40', '16:45', '16:50', '16:55', '17:00', '17:05', '17:10', '17:15', '17:20', '17:25', '17:30', '17:35', '17:40', '17:45', '17:50', '17:55', '18:00', '18:05', '18:10', '18:15', '18:20', '18:25', '18:30', '18:35', '18:40', '18:45', '18:50', '18:55', '19:00']
 dates: []
 provisional: true
 vehicle_scope: motor_vehicle
 evidence_file: null
-source_evidence_file: null
 registry_artifact: null
 
 selected_paths_file: ../../data/reference/candidates/<candidate_version>/paths.json
 operational_selection_file: ../../data/reference/candidates/<candidate_version>/manifest.json
-capture_plan_file: ../../data/reference/candidates/<candidate_version>/capture_plan_local.json
+capture_plan_file: ../../data/reference/plans/<plan_id>.json
 graph_cache: ../../data/reference/graph/<graph_version>
 cache_root: ../../.local/cache
 state_root: ../../.local/state
-processing_root: ../../data/processed
+# Optional legacy table import location; collect/transform write to data/interim/publication.
+# processing_root: ../../data/processed
 archive_root: ../../.local/archive/interim_history
 pilot_output_root: ../../.local/pilots
 log_root: ../../logs
