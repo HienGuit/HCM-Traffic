@@ -20,25 +20,15 @@ The versioned source contract is checked from `config/source_contracts.yaml` and
 
 ## Setup
 
-1. Open PowerShell in the repository root and create a Python 3.11 environment:
+1. Open PowerShell in the repository root and set up the Python environment:
 
    ```powershell
-   New-Item -ItemType Directory -Force .local/tmp, .local/pip-cache | Out-Null
-   $env:TMP = Join-Path $PWD ".local/tmp"
-   $env:TEMP = $env:TMP
-   $env:TMPDIR = $env:TMP
-   $env:PIP_CACHE_DIR = Join-Path $PWD ".local/pip-cache"
-   py -3.11 -m venv .venv
+   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\setup.ps1
    ```
 
-2. Install dependencies and the package:
+   The script finds 64-bit Python 3.11 through `py`, PATH or the Windows registry, creates `.venv`, and installs requirements and the package. Python Launcher is optional. If Python 3.11 is missing, install it and rerun. A working existing `.venv` is left unchanged.
 
-   ```powershell
-   & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-   & .\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e .
-   ```
-
-3. Create local configuration files (first setup only):
+2. Create local configuration files (first setup only):
 
    ```powershell
    New-Item -ItemType Directory -Force config/local
@@ -47,21 +37,21 @@ The versioned source contract is checked from `config/source_contracts.yaml` and
    Copy-Item config/runtime.example.json config/local/runtime.json
    ```
 
-4. Add the local inputs:
+3. Add the local inputs:
 
    - PBF: `data/external/<filename>.osm.pbf`.
    - Portable candidate bundle (`candidate_runtime_v2`): `paths.json` and `manifest.json` under `data/reference/candidates/<candidate_version>/`.
    - Add the matching `compatibility.json` if the rebuilt graph requires rebinding. Reports, shortlist and static JSON are optional; transform computes static features from the graph. Legacy bundles retain their original required files.
 
-5. Edit `study.yaml`, `budget.yaml` and `runtime.json` in `config/local/`:
+4. Edit `study.yaml`, `budget.yaml` and `runtime.json` in `config/local/`:
 
    - Set input/output paths, candidate version, schedule and budget.
    - Set `osm_pbf` relative to `data_root`, for example `external/<filename>.osm.pbf`.
    - Set other relative paths from the declaring config file's directory.
    - Set runtime `python` to the environment from step 1, `config` to `study.yaml`, and `plan` to the configured capture plan.
-   - Set `capture_plan_file` and runtime `plan` to the generated `../../data/reference/plans/<plan_id>.json` in step 7.
+   - Set `capture_plan_file` and runtime `plan` to the generated `../../data/reference/plans/<plan_id>.json` in step 6.
 
-6. Build the graph from the configured PBF offline; valid cached artifacts are reused:
+5. Build the graph from the configured PBF offline; valid cached artifacts are reused:
 
    ```powershell
    $python = ".\.venv\Scripts\python.exe"
@@ -82,9 +72,9 @@ The versioned source contract is checked from `config/source_contracts.yaml` and
    $version = $migration.candidate_version
    ```
 
-   Set `graph_cache` in `study.yaml` to `../../data/reference/graph/<graph_version>` using the returned graph version. Set `selected_paths_file` and `operational_selection_file` to the selected candidate version. Set the capture-plan paths after step 7. A graph/config mismatch is resolved by these path settings; a failed compatibility check must not be bypassed. No config or candidate approval is changed automatically.
+   Set `graph_cache` in `study.yaml` to `../../data/reference/graph/<graph_version>` using the returned graph version. Set `selected_paths_file` and `operational_selection_file` to the selected candidate version. Set the capture-plan paths after step 6. A graph/config mismatch is resolved by these path settings; a failed compatibility check must not be bypassed. No config or candidate approval is changed automatically.
 
-7. Generate the local capture plan offline after finishing configuration:
+6. Generate the local capture plan offline after finishing configuration:
 
    ```powershell
    $version = "<selected_candidate_version>"
@@ -97,7 +87,7 @@ The versioned source contract is checked from `config/source_contracts.yaml` and
 
    Set `capture_plan_file` and runtime `plan` to the returned file, relative to `config/local/`. Keep the generated plan separate from the immutable candidate bundle. Regenerate the plan after changing capture scope, schedule, source contract or budget. Moving storage directories alone does not invalidate a new portable plan; resolved paths remain recorded separately as provenance. Historical plans retain their original hash rules.
 
-8. Run offline checks; set the key in this PowerShell process to avoid `KEY_MISSING` in dry-run:
+7. Run offline checks; set the key in this PowerShell process to avoid `KEY_MISSING` in dry-run:
 
    ```powershell
    & .\.venv\Scripts\python.exe -B main.py --config config/local/study.yaml doctor
@@ -114,7 +104,7 @@ The versioned source contract is checked from `config/source_contracts.yaml` and
 
    Copy the output folder to the new machine. It contains `paths.json`, `manifest.json` and `compatibility.json`; historical bundles stay unchanged. Other artifacts listed in a v2 manifest may be omitted only when classified as optional reports or recomputable static data; any present artifact must match its hash. Unknown artifacts remain required.
 
-   Graph version identifies the reference build inputs and algorithms, not the machine or directory. If paths and the rebuilt graph have the same version, no rebinding or compatibility file is needed. If versions differ, use the companion for step 6: it proves complete network equivalence and exact selected-edge correspondence without copying the old graph. It never replaces the PBF/new graph or permits changed roads. Changed network semantics cause rebinding to fail.
+   Graph version identifies the reference build inputs and algorithms, not the machine or directory. If paths and the rebuilt graph have the same version, no rebinding or compatibility file is needed. If versions differ, use the companion for step 5: it proves complete network equivalence and exact selected-edge correspondence without copying the old graph. It never replaces the PBF/new graph or permits changed roads. Changed network semantics cause rebinding to fail.
 
 ## Usage
 

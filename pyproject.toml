@@ -29,7 +29,7 @@ packages = ["src"]
 "NOTICE" = "src/resources/NOTICE"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "main.py", "config/policy.yaml", "config/source_contracts.yaml", "config/study.example.yaml", "config/budget.example.yaml", "scripts/dev.py", "scripts/operate.ps1", "pyproject.toml", "requirements.txt", "README.md", "NOTICE", ".python-version", ".gitignore"]
+include = ["src", "main.py", "config/policy.yaml", "config/source_contracts.yaml", "config/study.example.yaml", "config/budget.example.yaml", "scripts/dev.py", "scripts/operate.ps1", "scripts/setup.ps1", "pyproject.toml", "requirements.txt", "README.md", "NOTICE", ".python-version", ".gitignore"]
 
 [tool.ruff]
 target-version = "py311"
